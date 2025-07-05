@@ -1,3 +1,6 @@
+print("🚀 Bot started")
+print("TOKEN:", os.getenv("TELEGRAM_BOT_TOKEN"))
+
 from telegram import Bot, Update
 from telegram.ext import ApplicationBuilder, CommandHandler
 import asyncio
