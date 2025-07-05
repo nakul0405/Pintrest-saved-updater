@@ -1,0 +1,4 @@
+# config.py
+
+TELEGRAM_BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+ADMIN_CHAT_ID = "YOUR_TELEGRAM_CHAT_ID"  # For testing, your own Telegram ID
