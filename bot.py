@@ -3,86 +3,102 @@ import json
 import asyncio
 from telegram import Bot, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from scraper import get_latest_pin  # You'll need to define this function
-from config import TELEGRAM_BOT_TOKEN, ADMIN_CHAT_ID
-
-DATA_FILE = "store.json"
-CHECK_INTERVAL = 60  # seconds
-APP_URL = "https://your-app-name.up.railway.app"  # <-- change this!
+from config import TELEGRAM_BOT_TOKEN, APP_URL
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
-watching_username = None
-sp_dc_cookie = None
+DATA_FILE = "store.json"
+CHECK_INTERVAL = 60  # seconds
 
-# ------------------- Data Storage --------------------
+users = {}  # user_id: {username, cookie}
 
-def load_last_pin():
+# ------------------- Helpers --------------------
+def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r") as f:
             return json.load(f)
     return {}
 
-def save_last_pin(data):
+def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f)
 
 # ------------------- Commands ------------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Welcome to Pinterest Watch Bot!\nUse /login to log in and /setuser <username> to begin.")
+    await update.message.reply_text("👋 Welcome to Pinterest Bot!\nUse /login to begin.\nThen use /setcookie and /setuser.")
 
 async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        f"🔐 Click to log in to Pinterest:\n{APP_URL}/login"
-    )
+    user_id = update.effective_user.id
+    login_url = f"{APP_URL}/login?uid={user_id}"
+    await update.message.reply_text(f"🔐 Click to login:\n{login_url}")
 
 async def setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global sp_dc_cookie
+    user_id = str(update.effective_user.id)
     if len(context.args) != 1:
-        await update.message.reply_text("❌ Usage: /setcookie <sp_dc_cookie>")
+        await update.message.reply_text("❌ Usage: /setcookie <_pinterest_sess_cookie>")
         return
-    sp_dc_cookie = context.args[0]
-    await update.message.reply_text("✅ sp_dc cookie set successfully!")
+
+    data = load_data()
+    if user_id not in data:
+        data[user_id] = {}
+    data[user_id]["cookie"] = context.args[0]
+    save_data(data)
+
+    await update.message.reply_text("✅ Cookie saved successfully!")
 
 async def setuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global watching_username
+    user_id = str(update.effective_user.id)
     if len(context.args) != 1:
         await update.message.reply_text("❌ Usage: /setuser <pinterest_username>")
         return
-    watching_username = context.args[0]
-    save_last_pin({watching_username: ""})
-    await update.message.reply_text(f"✅ Now watching: {watching_username}\nUse /startwatch to begin.")
+
+    data = load_data()
+    if user_id not in data:
+        data[user_id] = {}
+    data[user_id]["username"] = context.args[0]
+    data[user_id]["last_pin"] = ""
+    save_data(data)
+
+    await update.message.reply_text(f"✅ Now watching: {context.args[0]}\nUse /startwatch to begin.")
 
 async def startwatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not watching_username:
-        await update.message.reply_text("⚠️ Use /setuser first.")
-        return
-    if not sp_dc_cookie:
-        await update.message.reply_text("⚠️ Login required! Use /login and complete Pinterest login first.")
+    user_id = str(update.effective_user.id)
+    data = load_data()
+
+    if user_id not in data or "username" not in data[user_id] or "cookie" not in data[user_id]:
+        await update.message.reply_text("⚠️ Please complete /setuser and /setcookie first.")
         return
 
-    await update.message.reply_text("⏱️ Started watching Pinterest saved pins...")
+    await update.message.reply_text("⏱️ Started watching your saved pins...")
 
     async def monitor():
+        from scraper import get_latest_pin  # import here to avoid error if not implemented
+
         while True:
-            last_pin_data = load_last_pin()
-            last_pin = last_pin_data.get(watching_username, "")
-            new_pin = get_latest_pin(watching_username, sp_dc_cookie)  # ← scraper.py must support cookie
+            user_data = load_data().get(user_id, {})
+            cookie = user_data.get("cookie")
+            username = user_data.get("username")
+            last_pin = user_data.get("last_pin", "")
+
+            new_pin = get_latest_pin(username, cookie)
             if new_pin and new_pin["link"] != last_pin:
                 await bot.send_photo(
                     chat_id=update.effective_chat.id,
                     photo=new_pin["image"],
-                    caption=f"📌 New Pin Saved:\n{new_pin['title']}\n🔗 {new_pin['link']}"
+                    caption=f"📌 New Saved Pin:\n{new_pin['title']}\n🔗 {new_pin['link']}"
                 )
-                last_pin_data[watching_username] = new_pin["link"]
-                save_last_pin(last_pin_data)
+                user_data["last_pin"] = new_pin["link"]
+                all_data = load_data()
+                all_data[user_id] = user_data
+                save_data(all_data)
+
             await asyncio.sleep(CHECK_INTERVAL)
 
     app.create_task(monitor())
 
-# ------------------- Register Handlers ------------------------
+# ------------------- Handlers ------------------------
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("login", login))
