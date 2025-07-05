@@ -5,7 +5,7 @@ from scraper import get_latest_pin
 import json
 import os
 
-TOKEN = "7384016813:AAHfZey_z8lTHiaY_7uvOnwAzAApVpmijXc"
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHECK_INTERVAL = 60  # seconds
 DATA_FILE = "store.json"
 
